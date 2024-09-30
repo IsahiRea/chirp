@@ -76,6 +76,89 @@ func (cfg *apiConfig) handlerUsers(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+func (cfg *apiConfig) handlerChirps(w http.ResponseWriter, r *http.Request) {
+
+	type errors struct {
+		ErrorMsg string `json:"error"`
+	}
+
+	type sendBack struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Clean     string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
+
+	type recieve struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	requestData := recieve{}
+	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
+
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if len(requestData.Body) > 140 {
+
+		errorsResp := errors{ErrorMsg: "Chirp is too long"}
+		data, err := json.Marshal(&errorsResp)
+		if err != nil {
+			log.Printf("Error marshalling JSON: %s", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		w.Write(data)
+		return
+	}
+
+	// Profane
+	bannedWords := []string{"kerfuffle", "sharbert", "fornax", "Kerfuffle", "Sharbert", "Fornax"}
+
+	for _, word := range bannedWords {
+		requestData.Body = strings.ReplaceAll(requestData.Body, word, "****")
+	}
+
+	requestDataSend := database.CreateChirpParams{
+		Body:   requestData.Body,
+		UserID: requestData.UserID,
+	}
+
+	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), requestDataSend)
+	if err != nil {
+		log.Printf("Error finding chirp: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	responseData := sendBack{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Clean:     chirp.Body,
+		UserID:    chirp.UserID,
+	}
+
+	data, err := json.Marshal(&responseData)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	w.Write(data)
+
+}
+
 func (cfg *apiConfig) handlerHits(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(200)
@@ -120,63 +203,6 @@ func readiness(w http.ResponseWriter, r *http.Request) {
 	w.Write(result)
 }
 
-func handlerValidate(w http.ResponseWriter, r *http.Request) {
-	type errors struct {
-		ErrorMsg string `json:"error"`
-	}
-
-	type message struct {
-		Validate string `json:"body"`
-	}
-
-	type sendBack struct {
-		Clean string `json:"cleaned_body"`
-	}
-
-	requestData := message{}
-	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
-
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if len(requestData.Validate) > 140 {
-
-		errorsResp := errors{ErrorMsg: "Chirp is too long"}
-		data, err := json.Marshal(&errorsResp)
-		if err != nil {
-			log.Printf("Error marshalling JSON: %s", err)
-			w.WriteHeader(500)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		w.Write(data)
-		return
-	}
-
-	// Profane
-	bannedWords := []string{"kerfuffle", "sharbert", "fornax", "Kerfuffle", "Sharbert", "Fornax"}
-
-	for _, word := range bannedWords {
-		requestData.Validate = strings.ReplaceAll(requestData.Validate, word, "****")
-	}
-
-	responseData := sendBack{Clean: requestData.Validate}
-	data, err := json.Marshal(&responseData)
-	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	w.Write(data)
-}
-
 func main() {
 
 	godotenv.Load()
@@ -200,8 +226,8 @@ func main() {
 	mux.Handle("/app/assets/logo", http.StripPrefix("/app/", http.FileServer(http.Dir("logo.png"))))
 
 	mux.HandleFunc("GET /api/healthz", readiness)
-	mux.HandleFunc("POST /api/validate_chirp", handlerValidate)
 	mux.HandleFunc("POST /api/users", apiCfg.handlerUsers)
+	mux.HandleFunc("POST /api/chirps", apiCfg.handlerChirps)
 
 	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerHits)
 	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
