@@ -159,6 +159,55 @@ func (cfg *apiConfig) handlerChirps(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
+
+	allChirps, err := cfg.dbQueries.GetAllChirps(r.Context())
+	if err != nil {
+		log.Printf("Error obtaining chirps: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	data, err := json.Marshal(allChirps)
+	if err != nil {
+		log.Printf("Error Marshalling all chirps: %s", err)
+		w.WriteHeader(500)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	w.Write(data)
+
+}
+
+func (cfg *apiConfig) handlerGetChirpID(w http.ResponseWriter, r *http.Request) {
+	uuidString := r.PathValue("chirpID")
+
+	id, err := uuid.Parse(uuidString)
+	if err != nil {
+		log.Println("Invalid resource")
+		w.WriteHeader(404)
+		return
+	}
+
+	chirp, err := cfg.dbQueries.GetChirpByID(r.Context(), id)
+	if err != nil {
+		log.Printf("Error finding chirp by ID: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	data, err := json.Marshal(chirp)
+	if err != nil {
+		log.Printf("Error Marshalling chirp by ID: %s", err)
+		w.WriteHeader(500)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	w.Write(data)
+}
+
 func (cfg *apiConfig) handlerHits(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(200)
@@ -227,6 +276,9 @@ func main() {
 
 	mux.HandleFunc("GET /api/healthz", readiness)
 	mux.HandleFunc("POST /api/users", apiCfg.handlerUsers)
+
+	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetChirpID)
 	mux.HandleFunc("POST /api/chirps", apiCfg.handlerChirps)
 
 	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerHits)
