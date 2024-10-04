@@ -151,6 +151,3 @@ This project uses PostgreSQL for storing user data and chirps. Make sure to set 
 
 Standard HTTP status codes are used to indicate errors, with appropriate log messages in case of failures.
 
-## License
-
-This project is licensed under the MIT License.
